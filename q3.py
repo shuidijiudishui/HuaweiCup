@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from statsmodels.formula.api import ols
+from statsmodels.stats.anova import anova_lm
 
 # 读取 Excel 文件
 df = pd.read_excel('附件一（训练集）.xlsx')
@@ -18,18 +19,14 @@ freq_stats.columns = ['频率', '平均磁芯损耗', '磁芯损耗标准差']
 waveform_stats = df.groupby('励磁波形')['磁芯损耗，w/m3'].agg(['mean', 'std']).reset_index()
 waveform_stats.columns = ['励磁波形', '平均磁芯损耗', '磁芯损耗标准差']
 
-# 读取 Excel 文件
-
-# 获取所有表格的名称
+# 读取 Excel 文件中的所有表
 file_path = '附件一（训练集）.xlsx'
 sheet_names = pd.ExcelFile(file_path).sheet_names
 
-# 用于保存各个表的统计结果
+# 保存各个表的统计结果
 results = []
 
-# 遍历每个表格
 for sheet in sheet_names:
-    # 读取表格
     df = pd.read_excel(file_path, sheet_name=sheet)
 
     # 假设表中有一列为 '磁芯损耗'，计算平均值和标准差
@@ -38,27 +35,63 @@ for sheet in sheet_names:
 
     # 保存结果
     results.append({
-        '材料': sheet,  # 表名作为材料名称
+        '材料': sheet,
         '平均磁芯损耗': avg_loss,
         '磁芯损耗标准差': std_loss
     })
 
-print("材料统计：")
-# 将结果转换为 DataFrame 以便输出
+# 将结果转换为 DataFrame
 result_df = pd.DataFrame(results)
+print("材料统计：")
 print(result_df)
-
-# 输出结果
 print("温度统计：")
 print(temp_stats)
 print("\n频率统计：")
 print(freq_stats)
 print("\n励磁波形统计：")
 print(waveform_stats)
+# # ================= 双因素方差分析 ====================
+#
+# # 假设我们要分析温度和频率对磁芯损耗的影响
+# # 我们可以提取这些数据并进行双因素方差分析
+# anova_df1 = df[['温度，oC', '频率，Hz', '磁芯损耗，w/m3']].dropna()
+#
+# # 使用ols构建线性模型，并包括交互项
+# model = ols('Q("磁芯损耗，w/m3") ~ C(Q("温度，oC")) + C(Q("频率，Hz")) + C(Q("温度，oC")):C(Q("频率，Hz"))', data=anova_df1).fit()
+#
+# # 进行ANOVA分析
+# anova_results = anova_lm(model, typ=2)
+# print("\n双因素方差分析结果：")
+# print(anova_results)
+#
+# # 假设我们要分析温度和励磁波形对磁芯损耗的影响
+# anova_df2 = df[['温度，oC', '励磁波形', '磁芯损耗，w/m3']].dropna()
+#
+# # 使用ols构建线性模型，并包括交互项
+# model2 = ols('Q("磁芯损耗，w/m3") ~ C(Q("温度，oC")) + C(Q("励磁波形")) + C(Q("温度，oC")):C(Q("励磁波形"))', data=anova_df2).fit()
+#
+# # 进行ANOVA分析
+# anova_results2 = anova_lm(model2, typ=2)
+# print("\n温度与励磁波形的双因素方差分析结果：")
+# print(anova_results2)
+#
+# # 假设我们要分析频率和励磁波形对磁芯损耗的影响
+# anova_df3 = df[['频率，Hz', '励磁波形', '磁芯损耗，w/m3']].dropna()
+#
+# # 使用ols构建线性模型，并包括交互项
+# model3 = ols('Q("磁芯损耗，w/m3") ~ C(Q("频率，Hz")) + C(Q("励磁波形")) + C(Q("频率，Hz")):C(Q("励磁波形"))', data=anova_df3).fit()
+#
+# # 进行ANOVA分析
+# anova_results3 = anova_lm(model3, typ=2)
+# print("\n频率与励磁波形的双因素方差分析结果：")
+# print(anova_results3)
+
+
+# ================ 可视化分析 ===================
 
 sns.set(style="whitegrid")
 
-# 1. 画出温度 vs 磁芯损耗平均值与标准差的图
+# 1. 温度 vs 磁芯损耗平均值与标准差
 plt.figure(figsize=(10, 6))
 plt.errorbar(temp_stats['温度'], temp_stats['平均磁芯损耗'], yerr=temp_stats['磁芯损耗标准差'], fmt='-o', capsize=5)
 plt.title('Temperature vs Core loss (mean and standard deviation)')
@@ -68,72 +101,30 @@ plt.xticks(sorted(temp_stats['温度']))  # 确保横轴升序
 plt.grid(True)
 plt.show()
 
-# 2. 画出频率 vs 磁芯损耗平均值与标准差的图
+# 2. 频率 vs 磁芯损耗平均值与标准差
 plt.figure(figsize=(10, 6))
 plt.errorbar(freq_stats['频率'], freq_stats['平均磁芯损耗'], yerr=freq_stats['磁芯损耗标准差'], fmt='-o', capsize=5)
-plt.title('frequency vs Core loss (mean and standard deviation)')
-plt.xlabel('frequency (Hz)')
+plt.title('Frequency vs Core loss (mean and standard deviation)')
+plt.xlabel('Frequency (Hz)')
 plt.ylabel('Core loss')
 plt.xticks(sorted(freq_stats['频率']))  # 确保横轴升序
 plt.grid(True)
 plt.show()
 
-# 3. 画出励磁波形 vs 磁芯损耗平均值与标准差的图
+# 3. 励磁波形 vs 磁芯损耗平均值与标准差
 plt.figure(figsize=(10, 6))
 plt.errorbar(waveform_stats['励磁波形'], waveform_stats['平均磁芯损耗'], yerr=waveform_stats['磁芯损耗标准差'], fmt='-o', capsize=5)
 plt.title('Excitation waveform vs Core loss (mean and standard deviation)')
 plt.xlabel('Excitation waveform')
 plt.ylabel('Core loss')
-plt.xticks(sorted(waveform_stats['励磁波形']))  # 确保横轴升序
 plt.grid(True)
 plt.show()
 
-# 4. 画出材料 vs 磁芯损耗平均值与标准差的图
-# 构造示例数据
-data = {
-    '材料': ['material1', 'material2', 'material3', 'material4'],
-    '平均磁芯损耗': [179886.944216, 234317.144307, 264453.073238, 109469.249064],
-    '磁芯损耗标准差': [339525.652644, 409095.679288, 465459.562564, 213889.831057]
-}
-
-# 将数据转换为 DataFrame
-df = pd.DataFrame(data)
-# 设置图表风格
-sns.set(style="whitegrid")
-# 绘制柱状图，带有标准差的误差条
+# 4. 材料 vs 磁芯损耗平均值与标准差
 plt.figure(figsize=(10, 6))
-plt.bar(df['材料'], df['平均磁芯损耗'], yerr=df['磁芯损耗标准差'], capsize=5, color='skyblue')
+plt.bar(result_df['材料'], result_df['平均磁芯损耗'], yerr=result_df['磁芯损耗标准差'], capsize=5, color='skyblue')
 plt.title('Core losses for different materials (mean and standard deviation)')
-plt.xlabel('material')
+plt.xlabel('Material')
 plt.ylabel('Core loss')
-plt.grid(axis='y')  # 在y轴上添加网格线
-plt.show()
-
-# 分析两两之间对Core loss的影响
-# 1. 创建一个新的包含所有变量的 DataFrame，假设有材料、温度、频率和励磁波形列
-df_combined = pd.concat([temp_stats, freq_stats, waveform_stats, result_df], axis=1)
-
-# 2. 进行多元线性回归，带有交互项
-# 回归公式为磁芯损耗与材料、温度、频率、励磁波形及它们的交互项
-formula = 'Q("平均磁芯损耗") ~ C(材料) * C(温度) + C(频率) * C(励磁波形)'
-model = ols(formula, data=df_combined).fit()
-
-# 3. 输出回归结果
-print(model.summary())
-
-# 4. 绘制交互作用图
-import seaborn as sns
-
-# 交互作用分析 - 材料与温度的交互作用图
-plt.figure(figsize=(10, 6))
-sns.lmplot(x='温度', y='平均磁芯损耗', hue='材料', data=temp_stats, ci=None)
-plt.title('材料与温度对磁芯损耗的交互作用')
-plt.grid(True)
-plt.show()
-
-# 交互作用分析 - 频率与励磁波形的交互作用图
-plt.figure(figsize=(10, 6))
-sns.lmplot(x='频率', y='平均磁芯损耗', hue='励磁波形', data=freq_stats, ci=None)
-plt.title('频率与励磁波形对磁芯损耗的交互作用')
-plt.grid(True)
+plt.grid(axis='y')
 plt.show()
