@@ -6,4 +6,4 @@ first_part = filtered_df.iloc[:, :4]
 second_part = filtered_df.iloc[:, 4:]
 max_values = second_part.max(axis=1)
 third_part = pd.DataFrame(max_values, columns=['峰值'])
-new_first_part = pd.concat([first_part, third_part], axis=1)
+all_data = pd.concat([first_part, third_part], axis=1)
