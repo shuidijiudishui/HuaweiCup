@@ -60,8 +60,8 @@ def analyze_wave(data, threshold):
         print("这是正弦波")
     elif second_slope_change_count == 2:
         print("这是梯形波")
-        if third_point is not None and third_slope_change_count == 2:
-            print("这是梯形波")
+    elif third_point is not None and third_slope_change_count == 2:
+        print("这是梯形波")
     else:
         print("这是三角波")
 
