@@ -51,7 +51,7 @@ y = core_loss  # 磁芯损耗为目标变量
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Step 5: 构建并训练随机森林模型
-rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model = RandomForestRegressor(n_estimators=1000, random_state=42)
 rf_model.fit(X_train, y_train)
 
 # Step 6: 模型评估
