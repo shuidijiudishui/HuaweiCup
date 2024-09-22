@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
+import joblib
 
 
 # Step 1: 读取数据，并根据 sheet 名添加“材料”列
@@ -51,6 +52,7 @@ waveform_encoded = pd.get_dummies(waveform, prefix='波形')
 # 构建特征矩阵，包括原始的温度、频率、B_max，以及提取的磁通密度分布特征
 X = np.column_stack((temperature, frequency, B_max, B_mean, B_std, B_peak_to_peak, B_skew, B_kurtosis))
 X = np.hstack((X, material_encoded.values, waveform_encoded.values))
+print("维度", X.shape)
 
 # 将磁芯损耗作为目标变量
 y = core_loss
@@ -59,8 +61,12 @@ y = core_loss
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Step 6: 构建并训练 LightGBM 模型
-lgb_model = RandomForestRegressor(n_estimators=1000, random_state=42)
+lgb_model = LGBMRegressor(n_estimators=1000, random_state=42)
 lgb_model.fit(X_train, y_train)
+
+# 保存 LightGBM 模型
+model_filename = 'lgb_model.pkl'
+joblib.dump(lgb_model, model_filename)
 
 # Step 7: 模型评估
 y_pred_train = lgb_model.predict(X_train)
@@ -118,11 +124,11 @@ test_B_peak_to_peak = (test_B_columns.max(axis=1) - test_B_columns.min(axis=1)).
 test_B_skew = test_B_columns.skew(axis=1).values
 test_B_kurtosis = test_B_columns.kurtosis(axis=1).values
 
-test_material = test_data['材料'].values  # 如果附件三中没有“材料”列，需要手动添加或根据情况处理
+test_material = test_data['磁芯材料'].values  # 如果附件三中没有“材料”列，需要手动添加或根据情况处理
 
 # 对材料类型和励磁波形进行 one-hot 编码
-test_material_encoded = pd.get_dummies(test_material, prefix='材料')
-test_waveform_encoded = pd.get_dummies(test_waveform, prefix='波形')
+test_material_encoded = pd.get_dummies(test_material, prefix='磁芯材料')
+test_waveform_encoded = pd.get_dummies(test_waveform, prefix='励磁波形')
 
 # 确保测试集的编码列与训练集保持一致
 for col in material_encoded.columns:
@@ -139,6 +145,10 @@ test_waveform_encoded = test_waveform_encoded[waveform_encoded.columns]
 X_test_predict = np.column_stack((test_temperature, test_frequency, test_B_max, test_B_mean, test_B_std, test_B_peak_to_peak, test_B_skew, test_B_kurtosis))
 X_test_predict = np.hstack((X_test_predict, test_material_encoded.values, test_waveform_encoded.values))
 
+# 检查训练集和测试集特征矩阵的维度是否一致
+print("训练集特征矩阵维度:", X_train.shape)
+print("测试集特征矩阵维度:", X_test_predict.shape)
+
 # 进行预测
 test_predictions = lgb_model.predict(X_test_predict)
 
@@ -152,7 +162,76 @@ output_data['磁芯损耗预测'] = test_predictions_rounded  # 添加预测结�
 output_data.to_excel(file_output_path, index=False)
 
 # 特别输出指定样本序号的预测结果
-special_indices = [16, 76, 98, 126, 168, 230, 271, 338, 348, 379]
-special_samples = output_data.iloc[special_indices]
-print("\n指定样本序号的磁芯损耗预测结果：")
-print(special_samples[['样本序号', '磁芯损耗预测']])
+# special_indices = [16, 76, 98, 126, 168, 230, 271, 338, 348, 379]
+# special_samples = output_data.iloc[special_indices]
+# print("\n指定样本序号的磁芯损耗预测结果：")
+# print(special_samples[['样本序号', '磁芯损耗预测']])
+
+from scipy.optimize import minimize
+
+
+# 定义目标函数，输入为优化变量（温度、频率等），输出为磁芯损耗预测值
+# 定义目标函数，输入为优化变量（温度、频率等），输出为磁芯损耗预测值
+def objective_function(params, model, material_encoded, waveform_encoded):
+    # 从 params 中提取变量
+    temperature, frequency, B_max, B_mean, B_std, B_peak_to_peak, B_skew, B_kurtosis, material_code, waveform_code = params
+
+    # 强制将 material_code 和 waveform_code 转换为整数
+    material_code = int(material_code)
+    waveform_code = int(waveform_code)
+
+    if material_code not in range(4):
+        raise ValueError(f"Invalid material_code: {material_code}")
+    if waveform_code not in range(3):
+        raise ValueError(f"Invalid waveform_code: {waveform_code}")
+
+    # 创建 one-hot 编码的副本，避免直接修改原始数组
+    material_one_hot = np.zeros(material_encoded.shape[1])
+    waveform_one_hot = np.zeros(waveform_encoded.shape[1])
+
+    # 设置 material_code 和 waveform_code 的 one-hot 编码
+    material_one_hot[material_code] = 1
+    waveform_one_hot[waveform_code] = 1
+
+    # 构建输入特征，包含所有变量
+    input_features = np.array([temperature, frequency, B_max, B_mean, B_std, B_peak_to_peak, B_skew, B_kurtosis])
+    full_input = np.hstack((input_features, material_one_hot, waveform_one_hot))
+
+    # 使用模型进行预测
+    predicted_loss = model.predict(full_input.reshape(1, -1))
+
+    return predicted_loss
+
+# 初始化条件，包括所有变量
+initial_conditions = [25, 50000, 1.0, 0.5, 0.1, 1.0, 0.0, 3.0, 0, 0]  # 包括所有磁通密度特征
+
+# 设定所有优化变量的上下界
+bounds = [
+    (25, 90),   # 温度的范围
+    (50000, 500000),  # 频率的范围
+    (B_columns.max().min(), B_columns.max().max()),  # B_max 的范围
+    (B_columns.mean().min(), B_columns.mean().max()),  # B_mean 的范围
+    (B_columns.std().min(), B_columns.std().max()),    # B_std 的范围
+    (B_peak_to_peak.min(), B_peak_to_peak.max()),      # B_peak_to_peak 的范围
+    (B_skew.min(), B_skew.max()),                      # B_skew 的范围
+    (B_kurtosis.min(), B_kurtosis.max()),              # B_kurtosis 的范围
+    (0, 3),            # 材料 one-hot 编码
+    (0, 2)             # 励磁波形 one-hot 编码
+]
+
+# 使用 L-BFGS-B 优化
+result = minimize(
+    objective_function,
+    initial_conditions,
+    args=(lgb_model, material_encoded, waveform_encoded),
+    method='L-BFGS-B',
+    bounds=bounds  # 所有变量的边界
+)
+
+# 输出优化结果
+optimal_values = result.x
+optimal_loss = result.fun
+
+# 输出最优条件和对应的磁芯损耗
+print("最小磁芯损耗:", optimal_loss)
+print("对应的温度、频率等输入条件:", optimal_values)
