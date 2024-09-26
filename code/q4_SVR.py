@@ -1,43 +1,57 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from lightgbm import LGBMRegressor
+from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 
-# Step 1: 读取数据并整合不同材料的数据
+# Step 1: 读取数据，并根据 sheet 名添加“材料”列
 file_path = '附件一（训练集）.xlsx'
-materials = ['材料1', '材料2', '材料3', '材料4']
-dataframes = [pd.read_excel(file_path, sheet_name=material) for material in materials]
+sheets = ['材料1', '材料2', '材料3', '材料4']
 
-# 合并数据表
-all_materials_data = pd.concat(dataframes)
+# 初始化列表以存储所有数据
+all_data = []
 
-# Step 2: 数据预处理，提取特征和目标变量
+# 遍历每个 sheet（代表不同的材料）
+for sheet in sheets:
+    data = pd.read_excel(file_path, sheet_name=sheet)
+    data['材料'] = sheet  # 添加“材料”列，值为 sheet 名
+    all_data.append(data)
+
+# 将所有材料的数据合并为一个 DataFrame
+all_materials_data = pd.concat(all_data, ignore_index=True)
+
+# Step 2: 数据预处理
 temperature = all_materials_data.iloc[:, 0].values  # 温度列
-frequency = all_materials_data.iloc[:, 1].values    # 频率列
-core_loss = all_materials_data.iloc[:, 2].values    # 磁芯损耗列
-waveform = all_materials_data.iloc[:, 3].values     # 励磁波形列
-B_max = all_materials_data.iloc[:, 4:1029].max(axis=1).values  # 计算B_max，峰值磁通密度
+frequency = all_materials_data.iloc[:, 1].values  # 频率列
+core_loss = all_materials_data.iloc[:, 2].values  # 磁芯损耗列
+waveform = all_materials_data.iloc[:, 3].values  # 励磁波形类型
+material = all_materials_data['材料'].values  # 提取材料列
 
-# 对励磁波形类型进行 one-hot 编码
-waveform_encoded = pd.get_dummies(waveform)
+# Step 3: 计算磁通密度分布的统计特征
+B_columns = all_materials_data.iloc[:, 4:1029].apply(pd.to_numeric, errors='coerce')
+B_max = B_columns.max(axis=1).values
+
+# Step 4: 对材料类型和励磁波形进行 one-hot 编码
+material_encoded = pd.get_dummies(material, prefix='材料')
+waveform_encoded = pd.get_dummies(waveform, prefix='波形')
 
 # 构建特征矩阵
-X = np.vstack([temperature, frequency, B_max]).T
-X = np.concatenate([X, waveform_encoded], axis=1)
+X = np.column_stack((temperature, frequency, B_max))
+X = np.hstack((X, material_encoded.values, waveform_encoded.values))
+
 y = core_loss
 
 # Step 3: 划分训练集和测试集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Step 4: 构建并训练 LightGBM 模型
-lgb_model = LGBMRegressor(n_estimators=100, random_state=42)
-lgb_model.fit(X_train, y_train)
+# Step 4: 构建并训练 SVR 模型
+svr_model = SVR(kernel='rbf')  # 使用 RBF 核
+svr_model.fit(X_train, y_train)
 
 # Step 5: 模型评估
-y_pred_train = lgb_model.predict(X_train)
-y_pred_test = lgb_model.predict(X_test)
+y_pred_train = svr_model.predict(X_train)
+y_pred_test = svr_model.predict(X_test)
 
 # 评估模型在训练集和测试集上的性能
 print("训练集误差:")
@@ -54,7 +68,7 @@ print("R²:", r2_score(y_test, y_pred_test))
 plt.figure(figsize=(10, 6))
 plt.scatter(range(len(y_test)), y_test, color='blue', label='真实值')
 plt.scatter(range(len(y_pred_test)), y_pred_test, color='red', label='预测值')
-plt.title('LightGBM: 真实值 vs 预测值')
+plt.title('SVR: 真实值 vs 预测值')
 plt.xlabel('样本')
 plt.ylabel('磁芯损耗')
 plt.legend()
@@ -78,7 +92,7 @@ X_test_predict = np.vstack([test_temperature, test_frequency, test_B_max]).T
 X_test_predict = np.concatenate([X_test_predict, test_waveform_encoded], axis=1)
 
 # 进行预测
-test_predictions = lgb_model.predict(X_test_predict)
+test_predictions = svr_model.predict(X_test_predict)
 
 # 保留一位小数
 test_predictions_rounded = np.round(test_predictions, 1)

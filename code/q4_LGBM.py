@@ -1,13 +1,9 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
 from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
-from sklearn.tree import DecisionTreeRegressor
-from xgboost import XGBRegressor
-from sklearn.svm import SVR
 
 # Step 1: 读取数据，并根据 sheet 名添加“材料”列
 file_path = '附件一（训练集）.xlsx'
@@ -46,82 +42,31 @@ X = np.hstack((X, material_encoded.values, waveform_encoded.values))
 
 y = core_loss
 
-# Step 5: 划分训练集和测试集
+# Step 3: 划分训练集和测试集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Step 6: 构建模型
-models = {
-    'LightGBM': LGBMRegressor(n_estimators=100, random_state=42),
-    'XGBoost': XGBRegressor(n_estimators=100, random_state=42),
-    'Random Forest': RandomForestRegressor(n_estimators=100, random_state=42),
-    'Extra Trees': ExtraTreesRegressor(n_estimators=100, random_state=42),
-    'Decision Tree': DecisionTreeRegressor(random_state=42)
-}
+# Step 4: 构建并训练 LightGBM 模型
+lgb_model = LGBMRegressor(n_estimators=100, random_state=42)
+lgb_model.fit(X_train, y_train)
 
-# Step 7: 五折交叉验证
-cv_results = {}
-for name, model in models.items():
-    cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
-    cv_rmse = np.sqrt(-cv_scores)  # 转换为RMSE
-    cv_results[name] = cv_rmse
+# Step 5: 模型评估
+y_pred_train = lgb_model.predict(X_train)
+y_pred_test = lgb_model.predict(X_test)
 
-# 绘制箱线图
+# 评估模型在训练集和测试集上的性能
+print("训练集误差:")
+print("MSE:", mean_squared_error(y_train, y_pred_train))
+print("MAE:", mean_absolute_error(y_train, y_pred_train))
+print("R²:", r2_score(y_train, y_pred_train))
 
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
-plt.rcParams['axes.unicode_minus'] = False
-plt.figure(figsize=(10, 6))
-plt.boxplot(list(cv_results.values()), vert=False, labels=list(cv_results.keys()))
-plt.title('五折交叉验证RMSE分布对比')
-plt.xlabel('RMSE')
-plt.grid()
-plt.show()
-
-# 训练每个模型并评估性能
-train_metrics = {'Model': [], 'MSE': [], 'MAE': [], 'R²': []}
-
-for name, model in models.items():
-    model.fit(X_train, y_train)
-    y_pred_train = model.predict(X_train)
-
-    mse = mean_squared_error(y_train, y_pred_train)
-    mae = mean_absolute_error(y_train, y_pred_train)
-    r2 = r2_score(y_train, y_pred_train)
-
-    train_metrics['Model'].append(name)
-    train_metrics['MSE'].append(mse)
-    train_metrics['MAE'].append(mae)
-    train_metrics['R²'].append(r2)
-
-# 转换为DataFrame
-train_metrics_df = pd.DataFrame(train_metrics)
-
-# 绘制训练误差对比图
-plt.figure(figsize=(12, 6))
-x = np.arange(len(train_metrics_df['Model']))
-width = 0.25
-
-# 绘制MSE、MAE和R²
-plt.bar(x - width, train_metrics_df['MSE'], width, label='MSE', color='b')
-plt.bar(x, train_metrics_df['MAE'], width, label='MAE', color='g')
-plt.bar(x + width, train_metrics_df['R²'], width, label='R²', color='r')
-
-plt.title('训练集误差对比')
-plt.xlabel('模型')
-plt.ylabel('误差值')
-plt.xticks(x, train_metrics_df['Model'])
-plt.legend()
-plt.grid()
-plt.show()
-
-# 评估LightGBM在测试集上的性能
-y_pred_test = models['LightGBM'].predict(X_test)
-
-print("测试集误差 (LightGBM):")
+print("\n测试集误差:")
 print("MSE:", mean_squared_error(y_test, y_pred_test))
 print("MAE:", mean_absolute_error(y_test, y_pred_test))
 print("R²:", r2_score(y_test, y_pred_test))
 
-# Step 8: 绘制真实值和预测值对比图
+# Step 6: 绘制真实值和预测值对比图
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+plt.rcParams['axes.unicode_minus'] = False  # 用于正常显示负号
 plt.figure(figsize=(10, 6))
 plt.scatter(range(len(y_test)), y_test, color='blue', label='真实值')
 plt.scatter(range(len(y_pred_test)), y_pred_test, color='red', label='预测值')
@@ -131,7 +76,7 @@ plt.ylabel('磁芯损耗')
 plt.legend()
 plt.show()
 
-# Step 9: 使用模型对附件三的样本进行预测，并填入附件四
+# Step 7: 使用模型对附件三的样本进行预测，并填入附件四
 file_test_path = '附件三（测试集）.xlsx'
 test_data = pd.read_excel(file_test_path)
 
@@ -149,7 +94,7 @@ X_test_predict = np.vstack([test_temperature, test_frequency, test_B_max]).T
 X_test_predict = np.concatenate([X_test_predict, test_waveform_encoded], axis=1)
 
 # 进行预测
-test_predictions = models['LightGBM'].predict(X_test_predict)
+test_predictions = lgb_model.predict(X_test_predict)
 
 # 保留一位小数
 test_predictions_rounded = np.round(test_predictions, 1)
@@ -163,4 +108,4 @@ output_data.to_excel(file_output_path, index=False)
 # 特别输出特定样本序号的预测结果
 special_indices = [16, 76, 98, 126, 168, 230, 271, 338, 348, 379]
 special_results = output_data.iloc[special_indices, :]
-print(special_results[['样本序号', '磁芯损耗预测']])
+print(special_results[['序号', '磁芯损耗预测']])

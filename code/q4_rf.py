@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from xgboost import XGBRegressor
 
 # Step 1: 读取数据，并根据 sheet 名添加“材料”列
 file_path = '附件一（训练集）.xlsx'
@@ -50,13 +50,13 @@ y = core_loss  # 磁芯损耗为目标变量
 # Step 4: 划分训练集和测试集
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Step 5: 构建并训练 XGBoost 模型
-xgb_model = XGBRegressor(n_estimators=100, random_state=42)
-xgb_model.fit(X_train, y_train)
+# Step 5: 构建并训练随机森林模型
+rf_model = RandomForestRegressor(n_estimators=1000, random_state=42)
+rf_model.fit(X_train, y_train)
 
 # Step 6: 模型评估
-y_pred_train = xgb_model.predict(X_train)
-y_pred_test = xgb_model.predict(X_test)
+y_pred_train = rf_model.predict(X_train)
+y_pred_test = rf_model.predict(X_test)
 
 print("训练集误差:")
 print("MSE:", mean_squared_error(y_train, y_pred_train))
@@ -102,7 +102,7 @@ X_test_predict = np.column_stack((test_temperature, test_frequency, test_B_max))
 X_test_predict = np.hstack((X_test_predict, test_material_encoded.values, test_waveform_encoded.values))
 
 # 进行预测
-test_predictions = xgb_model.predict(X_test_predict)
+test_predictions = rf_model.predict(X_test_predict)
 
 # 保留一位小数
 test_predictions_rounded = np.round(test_predictions, 1)

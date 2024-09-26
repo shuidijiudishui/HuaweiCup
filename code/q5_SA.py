@@ -4,6 +4,8 @@ from sklearn.model_selection import train_test_split
 from lightgbm import LGBMRegressor
 import joblib
 from scipy.optimize import dual_annealing
+from xgboost import XGBRegressor
+
 
 # Step 1: 读取数据，并根据 sheet 名添加“材料”列
 file_path = '附件一（训练集）.xlsx'
@@ -101,14 +103,18 @@ def objective_function(x):
 
     # 计算传输磁能
     magnetic_energy = freq * B_max_val
-
+    normalized_energy = magnetic_energy / max_transmission_energy
     # 定义目标函数权重
-    alpha = 0.01 # 权重可根据需要调整
+    alpha = 0.95 # 权重可根据需要调整
 
     # 我们希望最小化磁芯损耗并最大化传输磁能，因此定义目标为：
     # minimize(core_loss_pred - alpha * magnetic_energy)
-    return core_loss_pred - alpha * magnetic_energy
+    # return core_loss_pred - alpha * magnetic_energy
+# 最小化磁芯损耗并最大化传输磁能
+    return (1 - alpha) * (core_loss_pred / max_core_loss) - alpha * normalized_energy
 
+max_core_loss = max(core_loss)  # 或根据模型预测的最大值
+max_transmission_energy = max(frequency * B_max)
 
 # Step 8: 定义变量边界
 bounds = [
